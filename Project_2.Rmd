@@ -1,0 +1,359 @@
+---
+title: "Evaluate the Effectiveness of Three Non-pharmacological Therapies for Fibromyalgia in a Randomized Controlled Clinical Trial"
+author: "5724"
+date: "Febrary 9, 2017"
+header-includes:
+    - \usepackage{setspace}\doublespacing
+output: pdf_document
+bibliography: reference.bib
+---
+
+#Abstract
+
+
+#Introduction
+
+Fibromyalgia (FM) is a medical condition characterised by chronic widespread pain and a heightened pain response to pressure [@a]. Due to the uncertainty about the pathogenesis of FM, current treatment approaches focus on management of symptoms to improve quality of life [@b]. In this project, our main objective is to evaluate the effectiveness of two non-pharmacological treatments for FM from a three-arm randomized controlled trial study, in which the patients were randomly assigned to one of the three therapy groups (two treatment groups, and one control group). The two treatments are emotional awareness and expression therapy (EET), and cognitive-behavioral therapy (CBT), and patients in the control group were educated knowledge about FM (EDU). In particular, we are interested in whether the two treatments are effective in improving the sleep quality, which is measured by Pittsburgh Sleep Quality Index (PSQI), comparing to the control group.
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE,results='hide'}
+##Import Data and Libraries
+library(readxl)
+fm <- read_excel("~/Downloads/Updated DATAforBIOSTAT699.xls")
+library(plyr)
+library(ggplot2)
+library(Rmisc)
+library(tidyr)
+library(gee)
+library(data.table)
+library(geepack)
+library(aod)
+```
+
+#Methods
+
+Clinical and biomarker data were collected from 230 patients with Fibromyalgia from a three-arm allegiance-controlled randomized controlled trial. The study start time ranged from 2011 to 2014. The patients in the data were treated at two sites: 101 (43.9%) at University of Michigan, and the other 129 (56.1%) at Wayne State University. 94% of the subjects were female, and the mean age at baseline for all the patients were 49 years old, ranged from 19.9 to 74.2. PSQI were measured at baseline, post-treatment, and six-month follow-up. The mean PSQI at baseline was 12.33, and a PSQI greater than five is an indicator of poor sleeping quality. Twenty-two (9.57%) patients dropped out before the end of the study. Due to a lack of information about the specific reasons of dropouts, in order to guarantee the validity of our analysis, and considering the relatively small proportion of dropouts, we would only analyze the patients who completed the study (i.e. those who had measurements at all the three time points).
+
+Our methods were comprised of a descriptive analysis and a longitudinal analysis. In the descriptive analysis, we analyzed the distribution of PSQI at baseline by plotting histograms for the three groups, which could serve as a quick check of randomness of group assignment. We then compared the trends of mean PSQI for the three groups from baseline to six month after completion of treatment by plotting line charts, which would present a general picture of the effectiveness of the treatments. 
+
+In the longitudinal analysis, we built a generalized linear model by using generalized estimating equation (GEE). We chose GEE because we wanted to focus on estimating the effectiveness of the treatments over the population rather than predicting the treatment effect on a given individual. Also, the parameter estimates from GEE were consistent even if the covariance structure was misspecified, which was another reason we chose GEE because we did not have enough evidence to determine the covariance sturture of the repeated measurement.
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+##Reshape the data a little bit
+fm$study_year = year(fm$study_start)
+fm$year_of_fm = fm$study_year - fm$yearfmonset
+names(fm)[names(fm)=="PSQI_global_V2"] <- "baseline"
+names(fm)[names(fm)=="PSQI_global_V3"] <- "post_trt"
+names(fm)[names(fm)=="PSQI_global_V4"] <- "six_month"
+
+fm_wide <- fm[, c(1, 3, 34, 44, 54)]
+fm_long <- gather(fm_wide, time_point, measurement, baseline:six_month, factor_key=TRUE)
+
+#including sites
+fm_wide2 <- fm[, c(1, 3, 6, 34, 44, 54)]
+fm_long2 <- gather(fm_wide2, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_um <- subset(fm_long2,therapysite=="UM")
+fm_long_wsu <- subset(fm_long2,therapysite=="WSU")
+
+#Ages
+fm_wide_age <- fm[, c(1, 3, 6, 8, 34, 44, 54)]
+fm_long_age <- gather(fm_wide_age, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_age1 <- subset(fm_long_age,AGE<=41.19)
+fm_long_age2 <- subset(fm_long_age,AGE>41.19 & AGE<=50.44)
+fm_long_age3 <- subset(fm_long_age,AGE>50.44 & AGE<=57.19)
+fm_long_age4 <- subset(fm_long_age,AGE>57.19)
+
+#Gender
+fm_wide_gender <- fm[, c(1, 3, 11, 34, 44, 54)]
+fm_long_gender <- gather(fm_wide_gender, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_male <- subset(fm_long_gender,sex=="2")
+fm_long_female <- subset(fm_long_gender,sex=="1")
+
+#Year of FM
+fm_wide_year <- fm[, c(1, 3, 6, 34, 44, 54, 56)]
+fm_long_year <- gather(fm_wide_year, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_year1 <- subset(fm_long_year,year_of_fm<=5)
+fm_long_year2 <- subset(fm_long_year,year_of_fm>5 & year_of_fm<=10)
+fm_long_year3 <- subset(fm_long_year,year_of_fm>10 & year_of_fm<=20)
+fm_long_year4 <- subset(fm_long_year,year_of_fm>20)
+
+```
+
+
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE, include=FALSE}
+#Descriptive
+sum(fm$baseline >= 5 & fm$condition == "EET") / sum(fm$condition == "EET")
+sum(fm$baseline >= 5 & fm$condition == "CBT") / sum(fm$condition == "CBT")
+sum(fm$baseline >= 5 & fm$condition == "EDU") / sum(fm$condition == "EDU")
+
+tapply(fm$baseline, fm$condition, summary)
+
+summary(fm$post_trt)
+sum(fm$post_trt >= 5, na.rm = TRUE)/sum(fm$post_trt >= 0, na.rm = TRUE)
+sum(fm$post_trt >= 5 & fm$condition == "EET", na.rm = TRUE) / sum(fm$condition == "EET" & fm$post_trt >= 0, na.rm = TRUE)
+sum(fm$post_trt >= 5 & fm$condition == "CBT", na.rm = TRUE) / sum(fm$condition == "CBT" & fm$post_trt >= 0, na.rm = TRUE)
+sum(fm$post_trt >= 5 & fm$condition == "EDU", na.rm = TRUE) / sum(fm$condition == "EDU" & fm$post_trt >= 0, na.rm = TRUE)
+tapply(fm$post_trt, fm$condition, summary)
+
+summary(fm$six_month)
+sum(fm$six_month >= 5, na.rm = TRUE)/sum(fm$six_month >= 0, na.rm = TRUE)
+sum(fm$six_month >= 5 & fm$condition == "EET", na.rm = TRUE) / sum(fm$condition == "EET" & fm$six_month >= 0, na.rm = TRUE)
+sum(fm$six_month >= 5 & fm$condition == "CBT", na.rm = TRUE) / sum(fm$condition == "CBT" & fm$six_month >= 0, na.rm = TRUE)
+sum(fm$six_month >= 5 & fm$condition == "EDU", na.rm = TRUE) / sum(fm$condition == "EDU" & fm$six_month >= 0, na.rm = TRUE)
+tapply(fm$six_month, fm$condition, summary)
+```
+
+
+#Results
+
+###Descriptive Analysis
+
+Figure 1 showed the distribution of the PSQI of the three groups at baseline. The mean PSQIs, which were the three lines in the graph, were close to each other, and the median PSQIs for the three groups were all equal to 12.00. Also, the three desnity curves almost overlaped with each other. All these showed that the group assignment at baseline was relatively random. We also calculated the proportion of subjects that have PSQI greater than 5. About 96% of the patients had poor sleep quality at baseline, and this proportion was the same across the three groups.
+
+\begin{table}
+\centering
+\caption{Baseline PSQI Comparison}
+\label{Baseline PSQI}
+\begin{tabular}{ p{4cm} p{4cm} p{4cm} p{4cm} }
+\hline \\ [-1.5ex]
+Group & Median & Mean & Greater than 5 \\ [1ex]
+\hline \\ [-1.5ex]
+EET & 12.00 & 12.13 & 96$\%$\\ [1ex]
+CBT & 12.00 & 12.36 & 96$\%$\\ [1ex]
+EDU & 12.00 & 12.53 & 96$\%$\\ [1ex]
+\hline
+\end{tabular}
+\end{table}
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+##Let's plot some histograms first.
+cdat <- ddply(fm, "condition", summarise, baseline.mean=mean(baseline), post_trt.mean=mean(post_trt, na.rm=TRUE), six_month.mean=mean(six_month, na.rm=TRUE))
+
+#Histogram of sleeping index at baseline, post-treatment, and 6-month
+ggplot(fm, aes(x=baseline, fill=condition)) + geom_density(alpha=.3)+
+    geom_vline(data=cdat, aes(xintercept=baseline.mean,  colour=condition),
+               linetype="solid", size=0.75)
+ggplot(fm, aes(x=post_trt, fill=condition)) + geom_density(alpha=.3)+
+    geom_vline(data=cdat, aes(xintercept=post_trt.mean,  colour=condition),
+               linetype="solid", size=0.75)
+ggplot(fm, aes(x=six_month, fill=condition)) + geom_density(alpha=.3)+
+    geom_vline(data=cdat, aes(xintercept=six_month.mean,  colour=condition),
+               linetype="solid", size=0.75)
+```
+
+Figure 2 showed the distribution of the PSQI of the three groups post treatment. We could observe that some discrepancies arised after treatment although the three groups were at about the same level at baseline. The mean and median PSQIs, as well as the proportion of patients with bad sleep, all decreased for the two treatment groups, but not very obviously for the control group. With respect to the distribution of PSQI for the two treatment groups, we could see that for CBT there was a peak at around eight, while the curve for EET was relatively flat. Based on these numbers and curves, the two treatments appeared to be more effective than the control group, and there were some difference in the effectiveness between the two treatment groups.
+
+\begin{table}
+\centering
+\caption{Post-Treatment PSQI Comparison}
+\label{Post-Treatment PSQI}
+\begin{tabular}{ p{4cm} p{4cm} p{4cm} p{4cm} }
+\hline \\ [-1.5ex]
+Group & Median & Mean & Greater than 5 \\ [1ex]
+\hline \\ [-1.5ex]
+EET & 10.00 & 10.45 & 92$\%$\\ [1ex]
+CBT & 10.00 & 10.23 & 93$\%$\\ [1ex]
+EDU & 12.00 & 12.32 & 95$\%$\\ [1ex]
+\hline
+\end{tabular}
+\end{table}
+
+Figure 3 showed the distribution of the PSQI of the three groups after six-month follow-up. We could observe that the three distributions almost overlaped with each other again, although they were quite separated at post-treatment. Although the three groups were relatively close with respect to means and medians, the proportion of patients with bad sleep in the EET group was much lower than the other two. Therefore, the EET appeared to be more effective than CBT and EDU after six months, while the other two were equally effective. Figure 4 showed the general trends for the three groups from baseline to six-month follow-up, which were consistent with our observations above.
+
+\begin{table}
+\centering
+\caption{Six-month PSQI Comparison}
+\label{Six-month PSQI}
+\begin{tabular}{ p{4cm} p{4cm} p{4cm} p{4cm} }
+\hline \\ [-1.5ex]
+Group & Median & Mean & Greater than 5 \\ [1ex]
+\hline \\ [-1.5ex]
+EET & 9.00 & 9.7 & 86$\%$\\ [1ex]
+CBT & 11.00 & 10.38 & 95$\%$\\ [1ex]
+EDU & 10.00 & 10.64 & 93$\%$\\ [1ex]
+\hline
+\end{tabular}
+\end{table}
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+#Plot some line charts to see the trends
+line_chart <- function(tgc,title){
+  ggplot(tgc, aes(x=time_point, y=measurement, color=condition, group=condition)) + 
+    geom_errorbar(aes(ymin=measurement-se, ymax=measurement+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    ggtitle(title)
+
+tgc <- summarySE(fm_long, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+line_chart(tgc,"Trends in general")
+}
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE,include=FALSE}
+#ggplot(fm, aes(x=condition, y=baseline)) + geom_boxplot()
+
+#Are the situation the same for both sites?
+# tgc_um <- summarySE(fm_long_um, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p11 <- line_chart(tgc_um, "UM")
+# tgc_wsu <- summarySE(fm_long_wsu, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p12 <- line_chart(tgc_wsu, "WSU")
+# 
+# #How about different age?
+# tgc_age1 <- summarySE(fm_long_age1, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p1 <- line_chart(tgc_age1,"Age <= 41.19")
+# tgc_age2 <- summarySE(fm_long_age2, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p2 <- line_chart(tgc_age2,"AGE>41.19 & AGE<=50.44")
+# tgc_age3 <- summarySE(fm_long_age3, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p3 <- line_chart(tgc_age3,"AGE>50.44 & AGE<=57.19")
+# tgc_age4 <- summarySE(fm_long_age4, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p4 <- line_chart(tgc_age4,"AGE>57.19")
+# 
+# multiplot(p1, p2, p3, p4, cols=2)
+# 
+# #How about sex?
+# tgc_male <- summarySE(fm_long_male, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p5 <- line_chart(tgc_male,"Trends for Male")
+# tgc_female <- summarySE(fm_long_female, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p6 <- line_chart(tgc_female,"Trends for Female")
+# 
+# multiplot(p5, p6, cols=2)
+# 
+# #Year of fm?
+# tgc_year1 <- summarySE(fm_long_year1, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p7 <- line_chart(tgc_year1,"year<=5")
+# tgc_year2 <- summarySE(fm_long_year2, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p8 <- line_chart(tgc_year2,"year>5 & year<=10")
+# tgc_year3 <- summarySE(fm_long_year3, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p9 <- line_chart(tgc_year3,"year>10 & year<=20")
+# tgc_year4 <- summarySE(fm_long_year4, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+# p10 <- line_chart(tgc_year4,"year>20")
+# 
+# multiplot(p7, p8, p9, p10, cols=2)
+```
+
+###Longitudinal Analysis
+
+Next we would build a marginal model to answer our main scientific question: whether the treatments (EET and CBT) were effective in improving sleep quality for FM patients comparing to control (EDU). To answer this question, we could compare the changes, from baseline to post-treatment and six-month follow-up, in the average PSQI measurement in the three threatment groups. We could express this in the following marginal model for the expected PSQI
+$$ 
+\begin{aligned}
+E(Y_{ij}) = \mu_{ij} = \beta_1 + \beta_2Post\_trt_{ij} + \beta_3Six\_month_{ij} + \beta_4EET_{1i} + \beta_5CBT_{2i} + \beta_6post\_trt_{ij}*EET_{1i} + \\ \beta_7post\_trt_{ij}*CBT_{2i} + \beta_8six\_month_{ij}*EET_{1i} + \beta_9six\_month_{ij}*CBT_{i2}
+\end{aligned}
+$$
+where $Y_{ij}$ was the measurement of PSQI for the $i^{th}$ patient in the $j^{th}$ period of observation. The variable EET and CBT were indicator variables for EET and CBT respectively, with EET = 1 if a patient was randomized to EET treatment group and EET = 0 otherwise, and CBT = 1 if a patient was randomized to CBT treatment group and CBT = 0 otherwise. We used two binary variable $post\_trt$ and $six\_month$ to denote the periods of post treatment and six-month follow-up respectively, with $post\_trt$ = 1 for the post-treatment period and $six\_month$ = 1 for the six-month period. Since we checked the randomness of group assignment at baseline and did not see a bias, we could assume that the mean PSQIs at baseline were equal in the three treatment groups. However, we still included main effects of treatment in the model, because the geeglm function that we used implicitly included the main effects. 
+
+To make the interpretation of parameters easier, we listed the interpretation of $\beta$s in terms of mean PSQI, for the three treatment groups at three periods. So, for example, the expected PSQI for patients in the control group at baseline was $\beta_1$, while the expected PSQI at the six-month follow-up period was $\beta_1 + \beta_3$. Also, we could compare the difference in the treatment effects between EET and CBT at post-treatment by comparing the difference in $\beta_4 + \beta_6$ and $\beta_5 + \beta_7$ (or just $\beta_6$ and $\beta_7$ if we assumed balanced randomness at baseline). Similarly, if we wanted to compare the treatment effects between EET and CBT at six-month follow-up, we could compare the difference between $\beta_4 + \beta_8$ and $\beta_5 + \beta_9$.
+
+\begin{table}
+\centering
+\caption{Interpretation of Parameters for the Marginal Model}
+\label{Parameters}
+\begin{tabular}{ p{4cm} p{4cm} p{4cm} p{4cm} }
+\hline \\ [-1.5ex]
+Group & Baseline & Post-trt & Six-month \\ [1ex]
+\hline \\ [-1.5ex]
+EET & $\beta_1 + \beta_4$ & $\beta_1 + \beta_2 + \beta_4 + \beta_6$  & $\beta_1 + \beta_3 + \beta_4 + \beta_8$\\ [1ex]
+CBT & $\beta_1 + \beta_5$ & $\beta_1 + \beta_2 + \beta_5 + \beta_7$  & $\beta_1 + \beta_3 + \beta_5 + \beta_9$\\ [1ex]
+EDU & $\beta_1$ & $\beta_1 + \beta_2$  & $\beta_1 + \beta_3$ \\ [1ex]
+\hline
+\end{tabular}
+\end{table}
+
+We assumed an autoregressive-1 within-subject correlation structure, because the result of one measurement at a specific period was likely to be correlated with the measurement from the last period. We used the geeglm function from the geepack libarary in R to fit the model. The results given by geepack were robust, which meant that even if our correlation structure was misspecified, we could still get valid results. Also, geepack only worked with complete data, so we removed all the subjects who dropped out from the study before fitting the model.
+
+The estimated regression coefficients, obtained using the GEE approach, were displayed in Table 5, with standard errors based on the "sandwich" estimator. Since the two main effects parameters were not significantly different from 0, we could ignore them in our analysis. A Wald test of the null hypothesis, $H_0: \beta_6 = \beta_7 = 0$, produced a Wald statistic, $W^2 = 16.0$, with two degrees of freedom (p < 0.001), which indicated that the two treatments in general significantly performed better than the control group in improving the sleep quality for FM patients right after treatment. A test of the null hypothesis that both treatments are equally effective at post-treatment, $H_0: \beta_6 = \beta_7$, produced a Wald statistic, $W^2 = 1.3$, with one degree of freedom (p > 0.2), which meant that we could not reject the null hypothesis that the two treatments are equally effective in improving sleep quality after treatment. A Wald test of the null hypothesis, $H_0: \beta_8 = \beta_9 = 0$, produced a Wald statistic, $W^2 = 0.48$, with two degrees of freedom (p > 0.7), which indicated that the two treatments in general were not significantly more effective than the control group in improving the sleep quality for FM patients at six-month follow-up after treatment. The significance of the main effect of six-month demonstrated that all the three treatments were effective in improving sleep quality with an average decrease of 1.8681 in PSQI from baseline, but the two treatment groups were not significantly better than the control group.
+
+\begin{table}
+\centering
+\caption{Parameter Estimates and Standard Errors (Based on Sandwich Variance Estimator) from Marginal Linear Regression Model}
+\label{GEE}
+\begin{tabular}{ p{4cm} p{4cm} p{4cm} p{4cm} }
+\hline \\ [-1.5ex]
+Variable & Estimate & SE & P-value \\ [1ex]
+\hline \\ [-1.5ex]
+Intercept & 12.2254 & 0.5095 & <2e-16 \\ [1ex]
+Post-trt & -0.1345  & 0.4149 & 0.74577\\ [1ex]
+Six-month & -1.8681 & 0.3639 & 2.8e-07 \\ [1ex]
+EET & -0.2648 & 0.6972 & 0.70408 \\ [1ex]
+CBT & 0.3380 & 0.6957  & 0.62705 \\ [1ex]
+post-trt*EET & -1.4774  & 0.5962 & 0.01321 \\ [1ex]
+post-trt*CBT & -2.0904  & 0.6151 & 0.00068 \\ [1ex]
+six-month*EET & -0.4504 & 0.5712 & 0.43044 \\ [1ex]
+six-month*CBT & -0.0669 & 0.5809 & 0.90828 \\ [1ex]
+\hline
+\end{tabular}
+\end{table}
+
+Another question we were interested in was whether the treatment effects were different for people with different characters. For example, we might want to know whether the treatment would be more effective for older people, people with longer history of FM, or people with higher education level, etc. Due to the limitation on the report length, we would not go into detail on the models we fitted, but what we did was basically adding all the variables that we were interested in into the marginal model above by adding more interaction terms as well as main effects terms, and see if any of the variables added were significant. The only significant variable we found was the household income. Before we fitted the model, we subtracted hhincome by 1 so that it started from 0, which made it easier to interpret. We found that when we included household income into the model, the main effect of six-month became non-significant with a p-vaue of 0.28, and the interaction term between six-month and EET became significant with a p-value of 0.04. Also, the interaction term of six-month, EET and hhincome was also significant with a p-value of 0.04. This results told us that at six-month follow-up, for patients in income group 1 (i.e., household income less than $10,000), the control group EDU could not significantly decrease PSQI, and the EET group was significantly more effective than the EDU group with the effectiveness of EET decreased as the household income increased. We listed part of this interesting results in Table 6. For the entire results, please refer to the R code.
+
+\begin{table}
+\centering
+\caption{Parameter Estimates and Standard Errors (Based on Sandwich Variance Estimator) from Marginal Linear Regression Model with Household Income Added (Partial Results)}
+\label{GEE with hhincome}
+\begin{tabular}{ p{4cm} p{4cm} p{4cm} p{4cm} }
+\hline \\ [-1.5ex]
+Variable & Estimate & SE & P-value \\ [1ex]
+\hline \\ [-1.5ex]
+Six-month & -0.83 & 0.773 & 0.2837 \\ [1ex]
+Six-month * EET & -3.127 & 1.531 & 0.04109 \\ [1ex]
+Six-month * EET * hhincome & 0.636 & 0.310 & 0.04030 \\ [1ex]
+\hline
+\end{tabular}
+\end{table}
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE,include=FALSE}
+fm_wide <- fm[, c(1, 3, 6, 8, 14, 19, 21, 34, 44, 54, 56)]
+#Remove dropouts
+fm_long <- gather(fm_wide, time_point, measurement, baseline:six_month, factor_key=TRUE)
+setDT(fm_long)[,mes.baseline:=measurement[time_point=="baseline"] , by=pid]
+fm_long$EET <- ifelse(fm_long$condition == "EET", 1, 0)
+fm_long$CBT <- ifelse(fm_long$condition == "CBT", 1, 0)
+fm_long$post_trt <- ifelse(fm_long$time_point == "post_trt",1,0)
+fm_long$six_month <- ifelse(fm_long$time_point == "six_month",1,0)
+fm_long$centered_age <- fm_long$AGE-49.4
+fm_long$hhincome <- fm_long$hhincome-1
+#Run the GEE model
+index <- order(as.integer(fm_long$pid))
+fm_long <- fm_long[index,]
+#fm_gee_un <- gee(measurement ~ post_trt + six_month + post_trt*EET + post_trt*CBT + six_month*EET + six_month*CBT + year_of_fm, data = fm_long, id = pid, family = gaussian, corstr = "unstructured")
+#summary(fm_gee_un)
+
+fm_long$wave <- as.numeric(factor(paste(fm_long$time_point, sep='.')))
+fm_long = na.omit(fm_long)
+#First we include a bunch of covariates that we are interested in
+fm_ar1 <- geeglm(measurement ~ post_trt + six_month + post_trt*EET + post_trt*CBT + six_month*EET + six_month*CBT + year_of_fm + centered_age + bmi + hhincome + hhincome*CBT*six_month + hhincome*EET*six_month + highesteduc,  data = fm_long, id = pid, family = gaussian, corstr = "ar1",scale.fix=T, waves=wave)
+
+#summary(fm_ar1)
+
+#remove those non-significant covariates
+fm_ar1_income <- geeglm(measurement ~ post_trt + six_month + post_trt*EET + post_trt*CBT + six_month*EET + six_month*CBT + hhincome + hhincome*CBT*six_month + hhincome*EET*six_month,  data = fm_long, id = pid, family = gaussian, corstr = "ar1",scale.fix=T, waves=wave)
+
+summary(fm_ar1_income)
+l = cbind(0,0,0,0,0,0,0,0,0,0,0,0,0,1,-1)
+wald.test(b = coef(fm_ar1_income), Sigma = fm_ar1_income$geese$vbeta.naiv, L=l)
+
+#if we only include time and trt
+fm_ar1 <- geeglm(measurement ~ post_trt + six_month + post_trt*EET + post_trt*CBT + six_month*EET + six_month*CBT ,  data = fm_long, id = pid, family = gaussian, corstr = "ar1",scale.fix=T, waves=wave)
+
+summary(fm_ar1)
+
+
+#Wald test
+#H0: post_trt EET = post_trt CBT = 0
+wald.test(b = coef(fm_ar1), Sigma = fm_ar1$geese$vbeta.naiv, Terms = 6:7)
+l = cbind(0,0,0,0,0,1,-1,0,0)
+#H0: post_trt EET = post_trt CBT
+wald.test(b = coef(fm_ar1), Sigma = fm_ar1$geese$vbeta.naiv, L=l)
+#H0: six_month EET = six_month CBT = 0
+wald.test(b = coef(fm_ar1), Sigma = fm_ar1$geese$vbeta.naiv, Terms = 8:9)
+```
+#Conclusion:
+<!-- EET and CBT are both significantly more effective than EDU at post treatment. The effect of EET and CBT are not significantly different. However, neither EET nor CBT are significantly more effective than EDU after six month. -->
+In the two-site three-arm allegiance-controlled randomized controlled clinical trial on the effectiveness of three non-pharmacological treatments for Fibromyalgia conducted between 2011 and 2014 at University of Michigan and Wayne State University, emotional awareness and expression therapy (EET, treatment group) and cognitive-behavioral therapy (CBT, treatment group) appeared to be statistically significantly more effective than the FM education (EDU, the control group) at post-treatment period in improving FM patients' sleep quality, which was measured by Pittsburgh Sleep Quality Index (PSQI). The effectiveness of the two treatment groups (EET and CBT) were not significantly different. Although all the three groups showed significant improvement in sleep quality after six-month follow-up, the two treatment groups were not significantly more effective than the control group. When taking household income into consideration, EET became significantly more effective than EDU at six-month follow-up. The effectiveness of EET at six-month follow-up decreased with the increase of household income.
+
+#Appendix
+The R code can be found at https://github.com/tzeriver/699_Project_2
+
+#REFERENCES
+
+
+
