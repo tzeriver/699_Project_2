@@ -1,0 +1,150 @@
+---
+title: "Project_2"
+author: "Zijiang Yang"
+date: "January 24, 2017"
+output: html_document
+---
+
+##Import Data and Libraries
+```{r}
+fm <- read_excel("~/Downloads/Updated DATAforBIOSTAT699.xls")
+library(plyr)
+library(ggplot2)
+library(Rmisc)
+library(tidyr)
+```
+
+##Reshape the data a little bit
+```{r}
+fm$study_year = year(fm$study_start)
+fm$year_of_fm = fm$study_year - fm$yearfmonset
+names(fm)[names(fm)=="PSQI_global_V2"] <- "baseline"
+names(fm)[names(fm)=="PSQI_global_V3"] <- "post_trt"
+names(fm)[names(fm)=="PSQI_global_V4"] <- "six_month"
+
+fm_wide <- fm[, c(1, 3, 34, 44, 54)]
+fm_long <- gather(fm_wide, time_point, measurement, baseline:six_month, factor_key=TRUE)
+
+#including sites
+fm_wide2 <- fm[, c(1, 3, 6, 34, 44, 54)]
+fm_long2 <- gather(fm_wide2, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_um <- subset(fm_long2,therapysite=="UM")
+fm_long_wsu <- subset(fm_long2,therapysite=="WSU")
+
+#Ages
+fm_wide_age <- fm[, c(1, 3, 6, 8, 34, 44, 54)]
+fm_long_age <- gather(fm_wide_age, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_age1 <- subset(fm_long_age,AGE<=41.19)
+fm_long_age2 <- subset(fm_long_age,AGE>41.19 & AGE<=50.44)
+fm_long_age3 <- subset(fm_long_age,AGE>50.44 & AGE<=57.19)
+fm_long_age4 <- subset(fm_long_age,AGE>57.19)
+
+#Gender
+fm_wide_gender <- fm[, c(1, 3, 11, 34, 44, 54)]
+fm_long_gender <- gather(fm_wide_gender, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_male <- subset(fm_long_gender,sex=="2")
+fm_long_female <- subset(fm_long_gender,sex=="1")
+
+#Year of FM
+fm_wide_year <- fm[, c(1, 3, 6, 34, 44, 54, 56)]
+fm_long_year <- gather(fm_wide_year, time_point, measurement, baseline:six_month, factor_key=TRUE)
+fm_long_year1 <- subset(fm_long_year,year_of_fm<=5)
+fm_long_year2 <- subset(fm_long_year,year_of_fm>5 & year_of_fm<=10)
+fm_long_year3 <- subset(fm_long_year,year_of_fm>10 & year_of_fm<=20)
+fm_long_year4 <- subset(fm_long_year,year_of_fm>20)
+
+```
+
+#Descriptive
+```{r}
+sum(fm$PSQI_global_V2 >= 5 & fm$condition == "EET") / sum(fm$condition == "EET")
+sum(fm$PSQI_global_V2 >= 5 & fm$condition == "CBT") / sum(fm$condition == "CBT")
+sum(fm$PSQI_global_V2 >= 5 & fm$condition == "EDU") / sum(fm$condition == "EDU")
+
+tapply(fm$PSQI_global_V2, fm$condition, summary)
+
+summary(fm$PSQI_global_V3)
+sum(fm$PSQI_global_V3 >= 5, na.rm = TRUE)/sum(fm$PSQI_global_V3 >= 0, na.rm = TRUE)
+sum(fm$PSQI_global_V3 >= 5 & fm$condition == "EET", na.rm = TRUE) / sum(fm$condition == "EET" & fm$PSQI_global_V3 >= 0, na.rm = TRUE)
+sum(fm$PSQI_global_V3 >= 5 & fm$condition == "CBT", na.rm = TRUE) / sum(fm$condition == "CBT" & fm$PSQI_global_V3 >= 0, na.rm = TRUE)
+sum(fm$PSQI_global_V3 >= 5 & fm$condition == "EDU", na.rm = TRUE) / sum(fm$condition == "EDU" & fm$PSQI_global_V3 >= 0, na.rm = TRUE)
+tapply(fm$PSQI_global_V3, fm$condition, summary)
+
+summary(fm$PSQI_global_V4)
+sum(fm$PSQI_global_V4 >= 5, na.rm = TRUE)/sum(fm$PSQI_global_V4 >= 0, na.rm = TRUE)
+sum(fm$PSQI_global_V4 >= 5 & fm$condition == "EET", na.rm = TRUE) / sum(fm$condition == "EET" & fm$PSQI_global_V4 >= 0, na.rm = TRUE)
+sum(fm$PSQI_global_V4 >= 5 & fm$condition == "CBT", na.rm = TRUE) / sum(fm$condition == "CBT" & fm$PSQI_global_V4 >= 0, na.rm = TRUE)
+sum(fm$PSQI_global_V4 >= 5 & fm$condition == "EDU", na.rm = TRUE) / sum(fm$condition == "EDU" & fm$PSQI_global_V4 >= 0, na.rm = TRUE)
+tapply(fm$PSQI_global_V4, fm$condition, summary)
+```
+
+
+
+##Let's plot some histograms first.
+```{r}
+cdat <- ddply(fm, "condition", summarise, PSQI_global_V2.mean=mean(PSQI_global_V2), PSQI_global_V3.mean=mean(PSQI_global_V3, na.rm=TRUE), PSQI_global_V4.mean=mean(PSQI_global_V4, na.rm=TRUE))
+
+#Histogram of sleeping index at baseline, post-treatment, and 6-month
+ggplot(fm, aes(x=PSQI_global_V2, fill=condition)) + geom_density(alpha=.3)+
+    geom_vline(data=cdat, aes(xintercept=PSQI_global_V2.mean,  colour=condition),
+               linetype="solid", size=0.75)
+ggplot(fm, aes(x=PSQI_global_V3, fill=condition)) + geom_density(alpha=.3)+
+    geom_vline(data=cdat, aes(xintercept=PSQI_global_V3.mean,  colour=condition),
+               linetype="solid", size=0.75)
+ggplot(fm, aes(x=PSQI_global_V4, fill=condition)) + geom_density(alpha=.3)+
+    geom_vline(data=cdat, aes(xintercept=PSQI_global_V4.mean,  colour=condition),
+               linetype="solid", size=0.75)
+
+ggplot(fm, aes(x=condition, y=PSQI_global_V2)) + geom_boxplot()
+
+#Plot some line charts to see the trends
+line_chart <- function(tgc,title){
+  ggplot(tgc, aes(x=time_point, y=measurement, color=condition, group=condition)) + 
+    geom_errorbar(aes(ymin=measurement-se, ymax=measurement+se), width=.1) +
+    geom_line() +
+    geom_point() +
+    ggtitle(title)
+}
+
+tgc <- summarySE(fm_long, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+line_chart(tgc,"Trends in general")
+
+#Are the situation the same for both sites?
+tgc_um <- summarySE(fm_long_um, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+line_chart(tgc_um)
+tgc_wsu <- summarySE(fm_long_wsu, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+line_chart(tgc_wsu)
+
+#How about different age?
+tgc_age1 <- summarySE(fm_long_age1, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p1 <- line_chart(tgc_age1,"Age <= 41.19")
+tgc_age2 <- summarySE(fm_long_age2, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p2 <- line_chart(tgc_age2,"AGE>41.19 & AGE<=50.44")
+tgc_age3 <- summarySE(fm_long_age3, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p3 <- line_chart(tgc_age3,"AGE>50.44 & AGE<=57.19")
+tgc_age4 <- summarySE(fm_long_age4, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p4 <- line_chart(tgc_age4,"AGE>57.19")
+
+multiplot(p1, p2, p3, p4, cols=2)
+
+#How about sex?
+tgc_male <- summarySE(fm_long_male, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p5 <- line_chart(tgc_male,"Trends for Male")
+tgc_female <- summarySE(fm_long_female, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p6 <- line_chart(tgc_female,"Trends for Female")
+
+multiplot(p5, p6, cols=2)
+
+#Year of fm?
+tgc_year1 <- summarySE(fm_long_year1, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p7 <- line_chart(tgc_year1,"year<=5")
+tgc_year2 <- summarySE(fm_long_year2, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p8 <- line_chart(tgc_year2,"year>5 & year<=10")
+tgc_year3 <- summarySE(fm_long_year3, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p9 <- line_chart(tgc_year3,"year>10 & year<=20")
+tgc_year4 <- summarySE(fm_long_year4, measurevar="measurement", groupvars=c("condition","time_point"), na.rm=TRUE)
+p10 <- line_chart(tgc_year4,"year>20")
+
+multiplot(p7, p8, p9, p10, cols=2)
+```
+
